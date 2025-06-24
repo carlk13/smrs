@@ -2,7 +2,7 @@
 
 **Generating Sufficient Querysets for Information Pursuit using Sparse Representative Modeling**
 
-This repository contains the implementation of the sparse modeling representative Selection algorithm proposed by Elhamifar et al. in "See all by looking at a Few " for the Bachelor's Thesis of **Carl Kemmerich**, supervised by Prof. Dr. Gitta Kutyniok and Stefan Kolek M.Sc. at the Bavarian AI Chair for Mathematical Foundations of Artificial Intelligence at Ludwig-Maximilians-Universität Munich.
+This repository contains the implementation of the Sparse Modeling Representative Selection algorithm proposed by Elhamifar et al. in "See all by looking at a Few " for the Bachelor's Thesis of **Carl Kemmerich**, supervised by Prof. Dr. Gitta Kutyniok and Stefan Kolek M.Sc. at the Bavarian AI Chair for Mathematical Foundations of Artificial Intelligence at Ludwig-Maximilians-Universität Munich.
 
 ---
 
