@@ -1,5 +1,4 @@
 # Standard imports
-from pathlib import Path
 import numpy as np
 
 # Torch imports
@@ -46,7 +45,7 @@ def shrink_l1_lq(Z1, lambda_param, q=2):
     Applies L1/Lq shrinkage for sparsity.
 
     Parameters:
-    - Z1: torch tensor of shape (N, N), the coefficient matrix.
+    - Z1: torch tensor of shape (N, N)
     - lambda_param: regularization parameter for shrinkage.
     - q: norm type (1 for L1, 2 for L1/L2, and float('inf') for L1/Linf).
 
@@ -97,50 +96,51 @@ def shrink_l2_linf(y, tau):
 
     if not isinstance(tau, torch.Tensor):
         tau = torch.tensor(tau, dtype=torch.float64, device=y.device)
-    else:
+    elif tau.dtype != torch.float64:
         tau = tau.double()
 
     # Sort y by absolute values in descending order
     y_abs = torch.abs(y)
     y_sorted, indices_sorted = torch.sort(y_abs, descending=True)
 
+    # Handle the trivial case of a single-element tensor
+    if len(y) <= 1:
+        zbar = y_sorted[0]
+        value = torch.maximum(
+            zbar - tau, torch.tensor(0.0, dtype=torch.float64, device=y.device)
+        )
+        x[0] = torch.sign(y[0]) * value
+        return x
+
     # Calculate cumulative sum for threshold check
     arange_tensor = torch.arange(1, len(y), device=y.device, dtype=torch.float64)
-    # Calculate cumulative sum for threshold check
-    cumulative_sum = (
-        torch.cumsum(y_sorted[:-1], dim=0) / arange_tensor - tau / arange_tensor
+    cumulative_sum = (torch.cumsum(y_sorted[:-1], dim=0) / arange_tensor) - (
+        tau / arange_tensor
     )
-
-    # Find the cutoff index
-    if cutoff_index < len(y):
-        x[indices_sorted[:cutoff_index]] = torch.sign(
-            y[indices_sorted[:cutoff_index]]
-        ) * max(zbar - tau / cutoff_index, y_sorted[cutoff_index].item())
-    else:
-        x[indices_sorted[:cutoff_index]] = torch.sign(
-            y[indices_sorted[:cutoff_index]]
-        ) * max(zbar - tau / cutoff_index, 0)
 
     # Find the cutoff index
     d = cumulative_sum > y_sorted[1:]
     if not torch.any(d):
         cutoff_index = len(y)
     else:
-        cutoff_index = torch.where(d)[0][0].item() + 1  # Convert to Python int
+        cutoff_index = torch.where(d)[0][0].item() + 1
 
+    # Calculate the mean of the absolute values up to the cutoff
     zbar = torch.mean(y_sorted[:cutoff_index])
+
     # Compute the shrinkage threshold
     if cutoff_index < len(y):
-        cutoff_val = torch.tensor(
-            y_sorted[cutoff_index].item(), dtype=torch.float64, device=y.device
-        )
-        value = torch.maximum(zbar - tau / cutoff_index, cutoff_val)
+        # Compare with the next largest absolute value
+        threshold = y_sorted[cutoff_index]
+        value = torch.maximum(zbar - tau / cutoff_index, threshold)
     else:
+        # Compare with zero
         value = torch.maximum(
             zbar - tau / cutoff_index,
             torch.tensor(0.0, dtype=torch.float64, device=y.device),
         )
 
+    # Apply the shrinkage to the first part of the vector
     x[indices_sorted[:cutoff_index]] = (
         torch.sign(y[indices_sorted[:cutoff_index]]) * value
     )
@@ -245,11 +245,12 @@ def admm_main(Y, affine=False, alpha=5, q=2, thr=1e-7, maxIter=5000, verbose=Tru
                 representative_indices = remove_representatives(
                     selected_indices, Y, threshold_pruning
                 )
+                representative_indices_set = set(representative_indices)
                 print("-" * 80)
                 print("Representative Indices:")
                 print(representative_indices)
                 print("-" * 80)
-                if old_reps == representative_indices:
+                if old_reps == representative_indices_set:
                     if verbose:
                         print("-" * 80)
                         print(
@@ -260,7 +261,7 @@ def admm_main(Y, affine=False, alpha=5, q=2, thr=1e-7, maxIter=5000, verbose=Tru
                         print(top_part)
                         print("-" * 80)
                     return Z2, err1
-                old_reps = representative_indices
+                old_reps = representative_indices_set
 
         Err = err1
         if verbose:
@@ -320,28 +321,6 @@ def admm_main(Y, affine=False, alpha=5, q=2, thr=1e-7, maxIter=5000, verbose=Tru
                 print(
                     f"Iteration {i}, || Z - C || = {err1:.5e}, ||1 - C^T 1|| = {err2:.5e}"
                 )
-                threshold_selection = 0.99  # threshold for find_representatives
-                threshold_pruning = 0.95  # threshold for remove_representatives
-                selected_indices = find_representatives(Z2, threshold_selection, q)
-                representative_indices = remove_representatives(
-                    selected_indices, Y, threshold_pruning
-                )
-                print("-" * 80)
-                print("Representative Indices:")
-                print(representative_indices)
-                print("-" * 80)
-                if old_reps == representative_indices:
-                    if verbose:
-                        print("-" * 80)
-                        print(
-                            f"Terminating ADMM at iteration {i:5d}, \n ||Z - C|| = {err1:.5e}, ||1 - C^T 1|| = {err2:.5e}."
-                        )
-                        top_part = Z1[:5, :5]
-                        print("Top part of the tensor:")
-                        print(top_part)
-                        print("-" * 80)
-                    return Z2, (err1, err2)
-                old_reps = representative_indices
 
         Err = (err1, err2)
         if verbose:

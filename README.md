@@ -1,5 +1,7 @@
 # Sparse Modeling Representative Selection
 Generating Sufficient Querysets for Information Pursuit using Sparse Representative Modeling
+Bachelor Thesis by Carl Kemmerich under the supervision of Prof. Dr. Gitta Kutyniok, Stefan Kolek M. Sc. at the Bavarian AI Chair for Mathematical Foundations of Artificial Intelligence.
+
 
 This project was created using uv. 
 To prepare the environment after cloning, run:
