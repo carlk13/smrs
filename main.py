@@ -17,7 +17,9 @@ def main():
     # Query arguments
     parser.add_argument("query_file", type=str, help="Path to query file")
     parser.add_argument(
-        "amount_queries", type=int, help="The amount of queries which should be used for smrs"
+        "amount_queries",
+        type=int,
+        help="The amount of queries which should be used for smrs",
     )
 
     # Dataset arguments
@@ -30,7 +32,10 @@ def main():
     # SMRS arguments
 
     parser.add_argument(
-        "--alpha", type=int, help="regularization parameter, typically in [2, 50].", default=5
+        "--alpha",
+        type=int,
+        help="regularization parameter, typically in [2, 50].",
+        default=5,
     )
     parser.add_argument(
         "--r",
@@ -38,12 +43,18 @@ def main():
         help="target dimensionality for optional projection, enter 0 to use original data.",
         default=0,
     )
-    parser.add_argument("--max_iterations", type=int, help="maximum number of ADMM iterations")
     parser.add_argument(
-        "--verbose", action="store_true", help="if True, prints information during iterations"
+        "--max_iterations", type=int, help="maximum number of ADMM iterations"
     )
     parser.add_argument(
-        "--run_without_pruning", action="store_true", help="Runs smrs also without pruning"
+        "--verbose",
+        action="store_true",
+        help="if True, prints information during iterations",
+    )
+    parser.add_argument(
+        "--run_without_pruning",
+        action="store_true",
+        help="Runs smrs also without pruning",
     )
     parser.add_argument("--delta", type=float, help="threshold for row sparsity index.")
 
@@ -170,8 +181,7 @@ def main():
             f"Runninng with {args.amount_queries} queries and {args.amount_images_per_class} images per class without pruning. "
         )
         print("-" * 80)
-        print("Running smrs for cosine_similarity matrix without pruning...")
-
+        
         # Is equivalent to running query selection on C again
         indices_with_images_wo_pruning = find_representatives(C, thr=0.99, q=2)
 
@@ -182,8 +192,9 @@ def main():
             args=args,
         )
 
-        print("-" * 80)
         print("Running smrs for query_feature matrix without pruning")
+        print("-" * 80)
+
         # equivalent to running query selection on C2 again
         indices_queries_only_wo_pruning = find_representatives(C2, thr=0.99, q=2)
         save_queries_to_txt_file(
@@ -193,10 +204,10 @@ def main():
             args=args,
             queries_only=True,
         )
-    
-    print("-" * 80)
+
     print("SMRS finished.")
     print("-" * 80)
+
 
 def batched_encode_text(
     model, tokenized_texts: torch.Tensor, batch_size: int = 64
