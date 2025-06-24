@@ -337,8 +337,7 @@ def admm_main(Y, affine=False, alpha=5, q=2, thr=1e-7, maxIter=5000, verbose=Tru
 
 def find_representatives(C, thr=0.99, q=2):
     """
-    Identifies indices of nonzero rows in the coefficient matrix based on their norms
-    or row-sparsity index (RSI).
+    Identifies indices of nonzero rows in the coefficient matrix based on their norms.
 
     Parameters:
     - C: NxN coefficient matrix (torch tensor).
@@ -435,7 +434,7 @@ def remove_representatives(sInd, Y, thr=0.95):
 
 
 def sparse_modeling_representative_selection(
-    Y, alpha=5, r=0, verbose=True, delta=0.16, max_iterations=5000
+    Y, alpha=5, r=0, verbose=True, max_iterations=5000
 ):
     """
     Sparse Modeling Representative Selection (SMRS) function.
@@ -445,7 +444,6 @@ def sparse_modeling_representative_selection(
     - alpha: regularization parameter, typically in [2, 50].
     - r: target dimensionality for optional projection, enter 0 to use original data.
     - verbose: if True, prints information during iterations.
-    - delta: threshold for row sparsity index.
     - max_iterations: maximum number of ADMM iterations.
 
     Returns:
