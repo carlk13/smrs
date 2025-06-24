@@ -56,7 +56,6 @@ def main():
         action="store_true",
         help="Runs smrs also without pruning",
     )
-    parser.add_argument("--delta", type=float, help="threshold for row sparsity index.")
 
     args = parser.parse_args()
 
@@ -148,7 +147,6 @@ def main():
         alpha=args.alpha,
         r=args.r,
         verbose=args.verbose,
-        delta=args.delta,
         max_iterations=args.max_iterations,
     )
 
