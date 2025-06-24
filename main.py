@@ -181,7 +181,7 @@ def main():
             f"Runninng with {args.amount_queries} queries and {args.amount_images_per_class} images per class without pruning. "
         )
         print("-" * 80)
-        
+
         # Is equivalent to running query selection on C again
         indices_with_images_wo_pruning = find_representatives(C, thr=0.99, q=2)
 
