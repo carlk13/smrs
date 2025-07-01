@@ -38,12 +38,6 @@ def main():
         default=5,
     )
     parser.add_argument(
-        "--r",
-        type=int,
-        help="target dimensionality for optional projection, enter 0 to use original data.",
-        default=0,
-    )
-    parser.add_argument(
         "--max_iterations", type=int, help="maximum number of ADMM iterations"
     )
     parser.add_argument(
@@ -152,7 +146,6 @@ def main():
     indices_with_images_pruning, C = sparse_modeling_representative_selection(
         Y=cosine_similarity,
         alpha=args.alpha,
-        r=args.r,
         verbose=args.verbose,
         max_iterations=args.max_iterations,
     )

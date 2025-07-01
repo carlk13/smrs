@@ -5,13 +5,12 @@ import numpy as np
 import torch
 
 
-def compute_lambda(Y, affine=False):
+def compute_lambda(Y):
     """
     Computes the regularization parameter lambda for the L1/Lq minimization.
 
     Parameters:
     - Y: torch tensor of shape (D, N), the data matrix with N data points in D dimensions.
-    - affine: boolean, whether to use the affine constraint.
 
     Returns:
     - lambda_param: regularization parameter for the optimization problem.
@@ -21,21 +20,13 @@ def compute_lambda(Y, affine=False):
     _, N = Y.shape
     T = torch.zeros(N, device=Y.device, dtype=Y.dtype)
 
-    if not affine:
-        # Compute lambda without affine constraint
-        for i in range(N):
-            yi = Y[:, i]
-            T[i] = torch.norm(torch.matmul(yi, Y))
-        lambda_param = torch.max(T)
-    else:
-        # Compute lambda with affine constraint
-        y_mean = torch.mean(Y, dim=1, keepdim=True).to(Y.dtype)
-        ones_matrix = torch.ones((1, N), device=Y.device, dtype=Y.dtype)  # Same dtype
-        for i in range(N):
-            yi = Y[:, i].unsqueeze(0)  # Ensure (1, D) instead of (D,)
-            affine_term = y_mean @ ones_matrix - Y  # Convert to same dtype
-            T[i] = torch.norm(torch.matmul(yi, affine_term))  # No dtype mismatch
-        lambda_param = torch.max(T)
+    y_mean = torch.mean(Y, dim=1, keepdim=True).to(Y.dtype)
+    ones_matrix = torch.ones((1, N), device=Y.device, dtype=Y.dtype)  # Same dtype
+    for i in range(N):
+        yi = Y[:, i].unsqueeze(0)  # Ensure (1, D) instead of (D,)
+        affine_term = y_mean @ ones_matrix - Y  # Convert to same dtype
+        T[i] = torch.norm(torch.matmul(yi, affine_term))  # No dtype mismatch
+    lambda_param = torch.max(T)
 
     return lambda_param
 
@@ -184,18 +175,20 @@ def calculate_errorcoefficient(Z, C):
     return average_absolute_error
 
 
-def admm_main(Y, affine=False, alpha=5, q=2, thr=1e-7, maxIter=5000, verbose=True):
+def admm_main(
+    Y, alpha=5, q=2, thr=1e-7, maxIter=5000, verbose=True, logging: bool = False
+):
     """
     ADMM for finding sparse representation with or without affine constraints.
 
     Parameters:
     - Y: DxN data matrix of N data points in D-dimensional space (torch tensor).
-    - affine: bool, whether to enforce affine constraint.  default, = False because we assume subspaces are linear
     - alpha: regularization parameter.
     - q: norm for L1/Lq minimization.
     - thr: stopping threshold for coefficient error ||Z - C||.
     - maxIter: maximum number of ADMM iterations.
     - verbose: bool, if True, print iteration errors.
+    - logging: bool, if True, track and return convergence history
 
     Returns:
     - Z2: NxN sparse coefficient matrix.
@@ -205,134 +198,82 @@ def admm_main(Y, affine=False, alpha=5, q=2, thr=1e-7, maxIter=5000, verbose=Tru
     Y = Y.double()
 
     # Setting penalty parameters
-    mu = alpha * 1 / compute_lambda(Y, affine)
+    mu = alpha * 1 / compute_lambda(Y)
     rho = alpha
 
     P = Y.T @ Y
 
-    if not affine:
-        # --- NOT AFFINE CASE ---
-        V = torch.inverse(mu * P + rho * torch.eye(N, device=Y.device, dtype=Y.dtype))
-        Z1 = torch.zeros((N, N), device=Y.device, dtype=Y.dtype)
-        gamma1 = torch.zeros((N, N), device=Y.device, dtype=Y.dtype)
+    V = torch.inverse(
+        mu * P
+        + rho * torch.eye(N, device=Y.device, dtype=Y.dtype)
+        + rho * torch.ones((N, N), device=Y.device, dtype=Y.dtype)
+    )
+    Z_previous = torch.zeros((N, N), device=Y.device, dtype=Y.dtype)
+    gamma1 = torch.zeros((N, N), device=Y.device, dtype=Y.dtype)
+    gamma2 = torch.zeros(N, device=Y.device, dtype=Y.dtype)
 
-        err1 = 10 * thr
-        i = 1
-        old_reps = list()
+    err1 = 10 * thr
+    err2 = 10 * thr
+    i = 1
 
-        # ADMM iterations for NOT AFFINE case
-        while err1 > thr and i < maxIter:
-            # Update C
-            C = V @ (mu * P + rho * Z1 - gamma1)
+    if logging:
+        logs = {
+            "primal_residual": [],
+            "dual_residual": [],
+            "affine_constraint_error": [],
+        }
 
-            # Update Z using the proximal operator
-            Z2 = shrink_l1_lq(C + gamma1 / rho, 1 / rho, q)
-
-            # Update Lagrange multiplier
-            gamma1 += rho * (C - Z2)
-
-            # Compute error (coefficient error)
-            err1 = calculate_errorcoefficient(C, Z2)
-
-            Z1 = Z2
-            i += 1
-
-            if verbose and i % 100 == 0:
-                print(f"Iteration {i}, || Z - C || = {err1:.5e}")
-                threshold_selection = 0.99  # threshold for find_representatives
-                threshold_pruning = 0.95  # threshold for remove_representatives
-                selected_indices = find_representatives(Z2, threshold_selection, q)
-                representative_indices = remove_representatives(
-                    selected_indices, Y, threshold_pruning
-                )
-                representative_indices_set = set(representative_indices)
-                print("-" * 80)
-                print("Representative Indices:")
-                print(representative_indices)
-                print("-" * 80)
-                if old_reps == representative_indices_set:
-                    if verbose:
-                        print("-" * 80)
-                        print(
-                            f"Terminating ADMM at iteration {i:5d}, \n ||Z - C|| = {err1:.5e}."
-                        )
-                        top_part = Z1[:5, :5]
-                        print("Top part of the tensor:")
-                        print(top_part)
-                        print("-" * 80)
-                    return Z2, err1
-                old_reps = representative_indices_set
-
-        Err = err1
-        if verbose:
-            print("-" * 80)
-            print(f"Terminating ADMM at iteration {i:5d}, \n ||Z - C|| = {err1:.5e}.")
-            top_part = Z1[:5, :5]
-            print("Top part of the tensor:")
-            print(top_part)
-            print("-" * 80)
-        return Z2, Err
-
-    else:
-        # --- AFFINE CASE ---
-        V = torch.inverse(
+    while (err1 > thr or err2 > thr) and i < maxIter:
+        # Update C
+        C = V @ (
             mu * P
-            + rho * torch.eye(N, device=Y.device, dtype=Y.dtype)
+            + rho * (Z_previous - gamma1 / rho)
             + rho * torch.ones((N, N), device=Y.device, dtype=Y.dtype)
+            + gamma2.unsqueeze(1).repeat(1, N)
         )
-        Z1 = torch.zeros((N, N), device=Y.device, dtype=Y.dtype)
-        gamma1 = torch.zeros((N, N), device=Y.device, dtype=Y.dtype)
-        gamma2 = torch.zeros(N, device=Y.device, dtype=Y.dtype)
 
-        err1 = 10 * thr
-        err2 = 10 * thr
-        i = 1
-        old_reps = list()
+        # Update C using the proximal operator
+        Z_current = shrink_l1_lq(C + gamma1 / rho, 1 / rho, q)
 
-        # ADMM iterations for AFFINE case
-        while (err1 > thr or err2 > thr) and i < maxIter:
-            # Update C
-            C = V @ (
-                mu * P
-                + rho * (Z1 - gamma1 / rho)
-                + rho * torch.ones((N, N), device=Y.device, dtype=Y.dtype)
-                + gamma2.unsqueeze(1).repeat(1, N)
-            )
+        # Update Lagrange multipliers
+        gamma1 += rho * (C - Z_current)
+        gamma2 += rho * (
+            torch.ones(N, device=Y.device, dtype=Y.dtype) - torch.sum(C, dim=0)
+        )
 
-            # Update C using the proximal operator
-            Z2 = shrink_l1_lq(C + gamma1 / rho, 1 / rho, q)
+        # Compute errors
+        err1 = calculate_errorcoefficient(C, Z_current)
+        err2 = calculate_errorcoefficient(
+            torch.sum(C, dim=0), torch.ones(N, device=Y.device, dtype=Y.dtype)
+        )
 
-            # Update Lagrange multipliers
-            gamma1 += rho * (C - Z2)
-            gamma2 += rho * (
-                torch.ones(N, device=Y.device, dtype=Y.dtype) - torch.sum(C, dim=0)
-            )
+        if logging:
+            dual_res = rho * calculate_errorcoefficient(Z_current, Z_previous)
 
-            # Compute errors
-            err1 = calculate_errorcoefficient(C, Z2)
-            err2 = calculate_errorcoefficient(
-                torch.sum(C, dim=0), torch.ones(N, device=Y.device, dtype=Y.dtype)
-            )
+            logs["primal_residual"].append(err1.item())
+            logs["dual_residual"].append(dual_res.item())
+            logs["affine_constraint_error"].append(err2.item())
 
-            Z1 = Z2
-            i += 1
+        Z_previous = Z_current
+        i += 1
 
-            if verbose and i % 100 == 0:
-                print(
-                    f"Iteration {i}, || Z - C || = {err1:.5e}, ||1 - C^T 1|| = {err2:.5e}"
-                )
-
-        Err = (err1, err2)
-        if verbose:
-            print("-" * 80)
+        if verbose and i % 100 == 0:
             print(
-                f"Terminating ADMM at iteration {i:5d}, \n ||Z - C|| = {err1:.5e}, ||1 - C^T 1|| = {err2:.5e}."
+                f"Iteration {i}, || Z - C || = {err1:.5e}, ||1 - C^T 1|| = {err2:.5e}"
             )
-            top_part = Z1[:5, :5]
-            print("Top part of the tensor:")
-            print(top_part)
-            print("-" * 80)
-        return Z2, Err
+
+    Err = (err1, err2)
+    if verbose:
+        print("-" * 80)
+        print(
+            f"Terminating ADMM at iteration {i:5d}, \n ||Z - C|| = {err1:.5e}, ||1 - C^T 1|| = {err2:.5e}."
+        )
+        print("-" * 80)
+
+    if logging:
+        return Z_current, Err, logs
+    else:
+        return Z_current, Err
 
 
 def find_representatives(C, thr=0.99, q=2):
@@ -434,7 +375,7 @@ def remove_representatives(sInd, Y, thr=0.95):
 
 
 def sparse_modeling_representative_selection(
-    Y, alpha=5, r=0, verbose=True, max_iterations=5000
+    Y, alpha=5, r=0, verbose=True, max_iterations=5000, logging=False
 ):
     """
     Sparse Modeling Representative Selection (SMRS) function.
@@ -442,9 +383,9 @@ def sparse_modeling_representative_selection(
     Parameters:
     - Y: DxN data matrix of N data points in D-dimensional space (torch tensor).
     - alpha: regularization parameter, typically in [2, 50].
-    - r: target dimensionality for optional projection, enter 0 to use original data.
     - verbose: if True, prints information during iterations.
     - max_iterations: maximum number of ADMM iterations.
+    - logging: enables logging for convergence testing.
 
     Returns:
     - representative_indices: indices of selected representative points.
@@ -453,7 +394,6 @@ def sparse_modeling_representative_selection(
     # Force Y to be double precision
     Y = Y.double()
     q = 2
-    affine = True
     thr = 1e-7
     max_iterations = max_iterations
     threshold_selection = 0.99  # threshold for find_representatives
@@ -463,26 +403,27 @@ def sparse_modeling_representative_selection(
     # Center the data matrix by subtracting the mean of each feature
     Y = Y - torch.mean(Y, dim=1, keepdim=True).double()
 
-    # Optional dimensionality reduction using SVD if r is specified
-    if r >= 1:
-        # Use NumPy's SVD for dimensionality reduction
-        Y_np = Y.cpu().numpy()
-        _, S, Vt = np.linalg.svd(Y_np, full_matrices=False)
-        r = min(r, Vt.shape[0])
-        Y = torch.tensor(
-            (S[:r, np.newaxis] * Vt[:r, :]).T, device=Y.device, dtype=Y.dtype
-        )
-
     # Compute the sparse coefficient matrix C using ADMM
-    C, _ = admm_main(
-        Y,
-        affine=affine,
-        alpha=alpha,
-        q=q,
-        thr=thr,
-        maxIter=max_iterations,
-        verbose=verbose,
-    )
+    if logging:
+        C, _, logs = admm_main(
+            Y,
+            alpha=alpha,
+            q=q,
+            thr=thr,
+            maxIter=max_iterations,
+            verbose=verbose,
+            logging=logging,
+        )
+    else:
+        C, _ = admm_main(
+            Y,
+            alpha=alpha,
+            q=q,
+            thr=thr,
+            maxIter=max_iterations,
+            verbose=verbose,
+            logging=logging,
+        )
     C = C.double()
 
     # Select representatives based on sparsity structure in C
@@ -491,4 +432,7 @@ def sparse_modeling_representative_selection(
         selected_indices, Y, threshold_pruning
     )
 
-    return representative_indices, C
+    if logging:
+        return representative_indices, C, logs
+    else:
+        return representative_indices, C

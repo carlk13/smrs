@@ -2,12 +2,12 @@ import argparse
 import ssl
 import os
 import numpy as np
+import json
 
 import torch
 from torch.utils.data import DataLoader, Subset
 from torchvision import datasets, transforms
 from tqdm import tqdm
-from pathlib import Path
 
 from smrs import sparse_modeling_representative_selection
 from torchvision.utils import save_image
@@ -16,7 +16,9 @@ from torchvision.utils import save_image
 ssl._create_default_https_context = ssl._create_unverified_context
 
 
-def get_data_for_smrs(dataset_name: str, split: str, filter_class: int = None, data_root: str = './data'):
+def get_data_for_smrs(
+    dataset_name: str, split: str, filter_class: int = None, data_root: str = "./data"
+):
     """
     Loads a dataset, optionally filters it for a single class, and prepares it for SMRS.
 
@@ -37,49 +39,86 @@ def get_data_for_smrs(dataset_name: str, split: str, filter_class: int = None, d
             - labels (torch.Tensor): The corresponding labels for the N samples.
     """
     print(f"Loading '{dataset_name}' dataset ({split} split)...")
-    
+
     # Use a simple ToTensor transform, as SMRS doesn't need data augmentation.
     transform = transforms.ToTensor()
 
     dataset_map = {
-        'cifar10': datasets.CIFAR10,
-        'cifar100': datasets.CIFAR100,
-        'mnist': datasets.MNIST,
+        "cifar10": datasets.CIFAR10,
+        "cifar100": datasets.CIFAR100,
+        "mnist": datasets.MNIST,
     }
 
     if dataset_name not in dataset_map:
         raise ValueError(f"Unsupported dataset: {dataset_name}")
 
     dataset_class = dataset_map[dataset_name]
-    is_train = (split == 'train')
-    full_dataset = dataset_class(root=data_root, train=is_train, download=True, transform=transform)
+    is_train = split == "train"
+    full_dataset = dataset_class(
+        root=data_root, train=is_train, download=True, transform=transform
+    )
+    samples_per_class = 10
+
 
     # ----------------------
-    # Filtering Logic 
+    # Filtering Logic
     # ----------------------
     if filter_class is not None:
         print(f"Filtering for class index: {filter_class}")
         try:
             # PyTorch datasets use .targets or .labels
-            targets = torch.tensor(full_dataset.targets if hasattr(full_dataset, 'targets') else full_dataset.labels)
+            targets = torch.tensor(
+                full_dataset.targets
+                if hasattr(full_dataset, "targets")
+                else full_dataset.labels
+            )
             indices = (targets == filter_class).nonzero(as_tuple=True)[0]
             if len(indices) == 0:
-                print(f"Warning: Class index {filter_class} not found or has no samples in the {split} split.")
+                print(
+                    f"Warning: Class index {filter_class} not found or has no samples in the {split} split."
+                )
                 return None, None
             dataset = Subset(full_dataset, indices)
             print(f"Found {len(dataset)} samples for class {filter_class}.")
         except AttributeError:
             print(f"Warning: Could not filter dataset '{dataset_name}' by class.")
-            dataset = full_dataset # Fallback to using the full dataset
+            dataset = full_dataset  # Fallback to using the full dataset
     else:
-        print("No class filter applied, using all samples.")
-        dataset = full_dataset
+        print(f"Applying filter to select {samples_per_class} images per class.")
+        try:
+            targets = torch.tensor(
+                full_dataset.targets
+                if hasattr(full_dataset, "targets")
+                else full_dataset.labels
+            )
+            
+            unique_classes = torch.unique(targets)
+            selected_indices = []
 
-    # ---------------------- 
-    # Data Preparation 
+            for cls in unique_classes:
+                class_indices = (targets == cls).nonzero(as_tuple=True)[0]
+                if len(class_indices) > samples_per_class:
+                    # Randomly sample `samples_per_class` indices
+                    selected_class_indices = class_indices[torch.randperm(len(class_indices))[:samples_per_class]]
+                else:
+                    # Take all available indices if less than `samples_per_class`
+                    selected_class_indices = class_indices
+                selected_indices.append(selected_class_indices)
+            
+            # Concatenate all selected indices
+            final_indices = torch.cat(selected_indices)
+            dataset = Subset(full_dataset, final_indices)
+            print(f"Selected {len(dataset)} total samples ({samples_per_class} per class where available).")
+
+        except AttributeError:
+            print(f"Warning: Could not process dataset '{dataset_name}' to select samples per class.")
+            dataset = full_dataset  # Fallback to using the full dataset
+
+    # ----------------------
+    # Data Preparation
     # ----------------------
     loader = DataLoader(dataset, batch_size=512, shuffle=False, num_workers=4)
-    
+
     all_images = []
     all_labels = []
     for images, labels in tqdm(loader, desc="Aggregating data"):
@@ -93,45 +132,53 @@ def get_data_for_smrs(dataset_name: str, split: str, filter_class: int = None, d
     # N = number of samples, D = feature dimension (C*H*W)
     N = images_tensor.shape[0]
     Y = images_tensor.view(N, -1).T  # Reshape to (NumFeatures, NumSamples)
-    
+
     # SMRS expects float64 for precision
     Y = Y.to(torch.float64)
 
     print(f"Data prepared for SMRS. Shape: {Y.shape} (Features, Samples)")
     return Y, labels_tensor
 
-def _get_raw_dataset_for_saving(dataset_name: str, split: str, data_root: str = './data'):
+
+def _get_raw_dataset_for_saving(
+    dataset_name: str, split: str, data_root: str = "./data"
+):
     """
     Helper function to load the full dataset with only ToTensor transform for saving purposes.
     This ensures pixels are scaled to [0.0, 1.0].
     """
     os.makedirs(data_root, exist_ok=True)
 
-    transform = transforms.Compose([
-        transforms.ToTensor(), # Only scales to [0.0, 1.0], no mean/std normalization
-    ])
+    transform = transforms.Compose(
+        [
+            transforms.ToTensor(),  # Only scales to [0.0, 1.0], no mean/std normalization
+        ]
+    )
 
     dataset_map = {
-        'cifar10': datasets.CIFAR10,
-        'cifar100': datasets.CIFAR100,
-        'mnist': datasets.MNIST,
+        "cifar10": datasets.CIFAR10,
+        "cifar100": datasets.CIFAR100,
+        "mnist": datasets.MNIST,
     }
 
     if dataset_name not in dataset_map:
         raise ValueError(f"Unsupported dataset: {dataset_name}")
 
     dataset_class = dataset_map[dataset_name]
-    is_train = (split == 'train')
-    dataset = dataset_class(root=data_root, train=is_train, download=True, transform=transform)
+    is_train = split == "train"
+    dataset = dataset_class(
+        root=data_root, train=is_train, download=True, transform=transform
+    )
     return dataset
 
+
 def save_representative_images(
-    selected_indices: np.ndarray,  
+    selected_indices: np.ndarray,
     dataset_name: str,
     split: str,
     filter_class: int = None,
     output_dir: str = "./smrs_representative_images",
-    data_root: str = './data' 
+    data_root: str = "./data",
 ):
     """
     Saves the images corresponding to the representative indices found by SMRS.
@@ -163,19 +210,19 @@ def save_representative_images(
         original_indices_of_filtered_class = [
             i for i, (_, label) in enumerate(full_dataset) if label == filter_class
         ]
-        
+
         if len(selected_indices) > 0 and len(original_indices_of_filtered_class) > 0:
             final_image_indices_to_save = [
-                original_indices_of_filtered_class[idx] 
-                for idx in selected_indices if idx < len(original_indices_of_filtered_class)
+                original_indices_of_filtered_class[idx]
+                for idx in selected_indices
+                if idx < len(original_indices_of_filtered_class)
             ]
         else:
-            print("Warning: No valid indices to map for saving (selected_indices empty or filter_class data empty).")
-
+            print(
+                "Warning: No valid indices to map for saving (selected_indices empty or filter_class data empty)."
+            )
     else:
-        # If no class was filtered, selected_indices directly correspond
-        # to the indices in the 'full_dataset'.
-        final_image_indices_to_save = selected_indices.tolist()
+        final_image_indices_to_save = selected_indices
 
     if not final_image_indices_to_save:
         print("No representative images to save (resulting list of indices was empty).")
@@ -186,64 +233,99 @@ def save_representative_images(
         try:
             image_tensor, image_label = full_dataset[original_idx]
         except IndexError:
-            print(f"Error: Could not retrieve image at original index {original_idx}. Skipping.")
-            continue # Skip to the next index if there's an issue
-        
+            print(
+                f"Error: Could not retrieve image at original index {original_idx}. Skipping."
+            )
+            continue  # Skip to the next index if there's an issue
+
         # Create a descriptive filename
         if filter_class is not None:
             filename = f"rep_smrs_idx_{i:03d}_orig_idx_{original_idx:05d}_class_{filter_class}.png"
         else:
             filename = f"rep_smrs_idx_{i:03d}_orig_idx_{original_idx:05d}_class_{image_label}.png"
-            
+
         save_path = os.path.join(output_dir, filename)
         save_image(image_tensor, save_path)
-        print(f"Saved representative image {i+1}/{len(selected_indices)}: {filename}")
+        print(f"Saved representative image {i + 1}/{len(selected_indices)}: {filename}")
 
     print(f"Finished saving {len(final_image_indices_to_save)} representative images.")
+
 
 def main():
     """
     Main function to run Sparse Modeling Representative Selection (SMRS) on a dataset.
-    
+
     This script allows you to load a standard vision dataset (like CIFAR-10 or MNIST),
     optionally filter it for a single class, and then run the SMRS algorithm to find
     a small set of representatives.
 
     """
-    parser = argparse.ArgumentParser(description="Run SMRS on a specified dataset and class.")
+    parser = argparse.ArgumentParser(
+        description="Run SMRS on a specified dataset and class."
+    )
 
     # ----------------------
     # Data Arguments
     # ----------------------
-    parser.add_argument('--dataset', type=str, default='cifar10',
-                        choices=['cifar10', 'cifar100', 'mnist'], help='Dataset to use.')
-    parser.add_argument('--split', type=str, default='test',
-                        choices=['train', 'test'], help='Dataset split to use (train or test).')
-    parser.add_argument('--filter_class', type=int, default=None,
-                        help='(Optional) The integer index of a class to filter for. If not provided, uses the whole dataset.')
-    parser.add_argument('--data_root', type=str, default='./data',
-                        help='Root directory for storing/downloading datasets.')
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default="cifar10",
+        choices=["cifar10", "cifar100", "mnist"],
+        help="Dataset to use.",
+    )
+    parser.add_argument(
+        "--split",
+        type=str,
+        default="test",
+        choices=["train", "test"],
+        help="Dataset split to use (train or test).",
+    )
+    parser.add_argument(
+        "--filter_class",
+        type=int,
+        default=None,
+        help="(Optional) The integer index of a class to filter for. If not provided, uses the whole dataset.",
+    )
+    parser.add_argument(
+        "--data_root",
+        type=str,
+        default="./data",
+        help="Root directory for storing/downloading datasets.",
+    )
 
-
-    # ---------------------- 
-    # SMRS Algorithm Arguments 
     # ----------------------
-    parser.add_argument("--alpha", type=int, default=5,
-                        help="Regularization parameter for SMRS, typically in [2, 50].")
-    parser.add_argument("--r", type=int, default=0,
-                        help="Target dimensionality for optional projection. Enter 0 to use original data.")
-    parser.add_argument("--max_iterations", type=int, default=None,
-                        help="Maximum number of ADMM iterations for SMRS.")
-    parser.add_argument("--verbose", action="store_true",
-                        help="If set, prints SMRS progress during iterations.")
+    # SMRS Algorithm Arguments
+    # ----------------------
+    parser.add_argument(
+        "--alpha",
+        type=int,
+        default=5,
+        help="Regularization parameter for SMRS, typically in [2, 50].",
+    )
+    parser.add_argument(
+        "--max_iterations",
+        type=int,
+        default=None,
+        help="Maximum number of ADMM iterations for SMRS.",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="If set, prints SMRS progress during iterations.",
+    )
+
+    parser.add_argument(
+        "--logging",
+        action="store_true",
+        help="If True enables tracking and returning convergence history",
+    )
 
     args = parser.parse_args()
 
     # 1. Load and prepare the data
     Y, labels = get_data_for_smrs(
-        dataset_name=args.dataset,
-        split=args.split,
-        filter_class=args.filter_class
+        dataset_name=args.dataset, split=args.split, filter_class=args.filter_class
     )
 
     if Y is None or Y.shape[1] == 0:
@@ -251,21 +333,44 @@ def main():
         return
 
     # 2. Run the SMRS algorithm
-    print('-' * 80)
-    print(f"Running SMRS with alpha = {args.alpha}...")
-    
-    selected_indices, C = sparse_modeling_representative_selection(
-        Y=Y,
-        alpha=args.alpha,
-        r=args.r,
-        verbose=args.verbose,
-        max_iterations=args.max_iterations 
-    )
+    if args.logging:
+        print("-" * 80)
+        print(f"Running SMRS with alpha = {args.alpha} with logging...")
 
-    print('-' * 80)
+        selected_indices, C, logs = sparse_modeling_representative_selection(
+            Y=Y,
+            alpha=args.alpha,
+            verbose=args.verbose,
+            max_iterations=args.max_iterations,
+            logging=args.logging
+        )
+
+        log_file_path = "convergence_logs.json"
+        print("-" * 80)
+        print(f"Saving logs to {log_file_path}...")
+        try:
+            with open(log_file_path, "w") as f:
+                json.dump(logs, f, indent=4)
+            print("Logs saved successfully!")
+            print("-" * 80)
+        except Exception as e:
+            print(f"An error occurred while saving the file: {e}")
+
+    else:
+        print("-" * 80)
+        print(f"Running SMRS with alpha = {args.alpha}...")
+
+        selected_indices, C = sparse_modeling_representative_selection(
+            Y=Y,
+            alpha=args.alpha,
+            verbose=args.verbose,
+            max_iterations=args.max_iterations,
+        )
+
+    print("-" * 80)
     print(f"SMRS completed. Found {len(selected_indices)} representatives.")
     print(f"Representative Indices: {selected_indices}")
-    print('-' * 80)
+    print("-" * 80)
 
     output_images_dir = f"./smrs_reps_{args.dataset}_{args.split}_class{args.filter_class if args.filter_class is not None else 'all'}_alpha{args.alpha}"
     save_representative_images(
@@ -274,11 +379,12 @@ def main():
         split=args.split,
         filter_class=args.filter_class,
         output_dir=output_images_dir,
-        data_root=args.data_root 
+        data_root=args.data_root,
     )
 
-    print('-' * 80)
+    print("-" * 80)
     print("Execution finished.")
+
 
 if __name__ == "__main__":
     main()
