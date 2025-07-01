@@ -56,6 +56,11 @@ def main():
         action="store_true",
         help="Runs smrs also without pruning",
     )
+    parser.add_argument(
+        "--run_query_features_only",
+        action="store_true",
+        help="Run SMRS on the query feature matrix",
+    )
 
     args = parser.parse_args()
 
@@ -129,6 +134,8 @@ def main():
     # -------------------------------
     cosine_similarity = image_features @ query_features.T
 
+    cosine_similarity = torch.where(cosine_similarity >= 0.25, 1.0, 0.0)
+
     print("-" * 80)
     print(f"Cosine similarity shape: {cosine_similarity.shape}")
     print("-" * 80)
@@ -157,23 +164,6 @@ def main():
         args=args,
     )
 
-    print("Running smrs for query_feature matrix")
-    print("-" * 80)
-    indices_queries_only_pruning, C2 = sparse_modeling_representative_selection(
-        Y=query_features.T,
-        alpha=args.alpha,
-        max_iterations=args.max_iterations,
-        verbose=args.verbose,
-    )
-
-    save_queries_to_txt_file(
-        selected_indices=indices_queries_only_pruning,
-        queries=queries,
-        with_pruning=True,
-        args=args,
-        queries_only=True,
-    )
-
     if args.run_without_pruning:
         print(
             f"Runninng with {args.amount_queries} queries and {args.amount_images_per_class} images per class without pruning. "
@@ -190,18 +180,37 @@ def main():
             args=args,
         )
 
-        print("Running smrs for query_feature matrix without pruning")
+    if args.run_query_features_only:
+        print("Running smrs for query_feature matrix")
         print("-" * 80)
+        indices_queries_only_pruning, C2 = sparse_modeling_representative_selection(
+            Y=query_features.T,
+            alpha=args.alpha,
+            max_iterations=args.max_iterations,
+            verbose=args.verbose,
+        )
 
-        # equivalent to running query selection on C2 again
-        indices_queries_only_wo_pruning = find_representatives(C2, thr=0.99, q=2)
         save_queries_to_txt_file(
-            selected_indices=indices_queries_only_wo_pruning,
+            selected_indices=indices_queries_only_pruning,
             queries=queries,
-            with_pruning=False,
+            with_pruning=True,
             args=args,
             queries_only=True,
         )
+
+        if args.run_without_pruning:
+            print("Running smrs for query_feature matrix without pruning")
+            print("-" * 80)
+
+            # equivalent to running query selection on C2 again
+            indices_queries_only_wo_pruning = find_representatives(C2, thr=0.99, q=2)
+            save_queries_to_txt_file(
+                selected_indices=indices_queries_only_wo_pruning,
+                queries=queries,
+                with_pruning=False,
+                args=args,
+                queries_only=True,
+            )
 
     print("SMRS finished.")
     print("-" * 80)
