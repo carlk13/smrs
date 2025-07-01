@@ -1,6 +1,3 @@
-# Standard imports
-import numpy as np
-
 # Torch imports
 import torch
 

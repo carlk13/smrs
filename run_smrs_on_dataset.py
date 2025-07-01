@@ -59,7 +59,6 @@ def get_data_for_smrs(
     )
     samples_per_class = 10
 
-
     # ----------------------
     # Filtering Logic
     # ----------------------
@@ -91,7 +90,7 @@ def get_data_for_smrs(
                 if hasattr(full_dataset, "targets")
                 else full_dataset.labels
             )
-            
+
             unique_classes = torch.unique(targets)
             selected_indices = []
 
@@ -99,19 +98,25 @@ def get_data_for_smrs(
                 class_indices = (targets == cls).nonzero(as_tuple=True)[0]
                 if len(class_indices) > samples_per_class:
                     # Randomly sample `samples_per_class` indices
-                    selected_class_indices = class_indices[torch.randperm(len(class_indices))[:samples_per_class]]
+                    selected_class_indices = class_indices[
+                        torch.randperm(len(class_indices))[:samples_per_class]
+                    ]
                 else:
                     # Take all available indices if less than `samples_per_class`
                     selected_class_indices = class_indices
                 selected_indices.append(selected_class_indices)
-            
+
             # Concatenate all selected indices
             final_indices = torch.cat(selected_indices)
             dataset = Subset(full_dataset, final_indices)
-            print(f"Selected {len(dataset)} total samples ({samples_per_class} per class where available).")
+            print(
+                f"Selected {len(dataset)} total samples ({samples_per_class} per class where available)."
+            )
 
         except AttributeError:
-            print(f"Warning: Could not process dataset '{dataset_name}' to select samples per class.")
+            print(
+                f"Warning: Could not process dataset '{dataset_name}' to select samples per class."
+            )
             dataset = full_dataset  # Fallback to using the full dataset
 
     # ----------------------
@@ -342,7 +347,7 @@ def main():
             alpha=args.alpha,
             verbose=args.verbose,
             max_iterations=args.max_iterations,
-            logging=args.logging
+            logging=args.logging,
         )
 
         log_file_path = "convergence_logs.json"
