@@ -46,6 +46,40 @@ uv run python run_smrs_on_dataset.py \
     --alpha 10 \
     --r 0 \
     --max_iterations 200 \
-    --verbose
+    --verbose   
+```
+
+### Generating a Query Set 
+Use this prompt to generate a queryset.
+```
+Information Pursuit (IP) is an explainable prediction algorithm that greedily selects a sequence of interpretable queries about the data in order of information gain, updating its posterior at each step based on observed query-answer pairs. The algorithm requires a queryset of task-relevant queries. For example if the class labels are
+- car 
+- horse 
+- boat 
+- bird
+then a good queryset could contain queries such as
+- four-legs 
+- water 
+- wheels 
+- wings 
+- metal body 
+- living thing 
+- animal 
+- street 
+- traffic light 
+Note the queries should probe the presence of semantically meaningful things but never ask exactly for the class label, i.e. the query should not be a synonym of the class label car. Next I will give you the class labels and I ask you to output exactly 2000 queries. Please output them in a way so that I can immediately save them as a .txt, i.e. each query is in a new line and they are not enumerated.
+ ------------------------ Class labels ------------------------
+Airplanes
+Cars
+Birds
+Cats
+Deer
+Dogs
+Frogs
+Horses
+Ships
+Trucks
+
+```
     
 
