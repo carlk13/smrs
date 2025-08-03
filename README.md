@@ -1,6 +1,6 @@
 # **Generating Sufficient Querysets for Information Pursuit using Sparse Representative Modeling**
 
-This repository contains the Python implementation (using PyTorch) of the Sparse Modeling Representative Selection (SMRS) algorithm proposed by Elhamifar et al. in "See all by looking at a Few ".
+This repository contains the Python implementation (using PyTorch) of the Sparse Modeling Representative Selection (SMRS) algorithm proposed by Elhamifar et al. in [See All by Looking at A Few](http://www.vision.jhu.edu/assets/ElhamifarCVPR12.pdf).
 It was developed as part of the Bachelor's Thesis of **Carl Kemmerich**, supervised by Prof. Dr. Gitta Kutyniok and Stefan Kolek M.Sc. at the Bavarian AI Chair for Mathematical Foundations of Artificial Intelligence, Ludwig-Maximilians-Universität Munich.
 
 ---
