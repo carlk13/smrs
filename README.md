@@ -1,8 +1,38 @@
 # **Generating Sufficient Querysets for Information Pursuit using Sparse Representative Modeling**
 
-This repository contains the implementation in python using pytorch of the Sparse Modeling Representative Selection algorithm proposed by Elhamifar et al. in "See all by looking at a Few " for the Bachelor's Thesis of **Carl Kemmerich**, supervised by Prof. Dr. Gitta Kutyniok and Stefan Kolek M.Sc. at the Bavarian AI Chair for Mathematical Foundations of Artificial Intelligence at Ludwig-Maximilians-Universität Munich.
+This repository contains the Python implementation (using PyTorch) of the Sparse Modeling Representative Selection (SMRS) algorithm proposed by Elhamifar et al. in "See all by looking at a Few ".
+It was developed as part of the Bachelor's Thesis of **Carl Kemmerich**, supervised by Prof. Dr. Gitta Kutyniok and Stefan Kolek M.Sc. at the Bavarian AI Chair for Mathematical Foundations of Artificial Intelligence, Ludwig-Maximilians-Universität Munich.
 
 ---
+## Project Overview
+This project uses SMRS to automatically select informative and diverse queries for use in explainable models like Information Pursuit (IP). It leverages CLIP embeddings to compute cosine similarities between images and natural language queries.
+
+The goal is to reduce the size of the queryset without sacrificing informativeness, which is especially useful for large-scale vision tasks where annotation or query design is expensive.
+
+---
+## Research Context & Results
+
+
+This implementation:
+- Enables sparse selection of queries from a larger candidate set.
+- Improves computational efficiency and interpretability in IP.
+- Was validated using CIFAR-10, where SMRS successfully selected representative queries that outperform random subsets in informativeness.
+
+More details can be found in the thesis PDF, available upon request.
+
+---
+
+## Contributions
+
+The repository contains the following contributions:
+- PyTorch implementation of the SMRS algorithm (based on Elhamifar et al.).
+- Integration with CLIP for computing image-query cosine similarities.
+- Scripts for:
+    - Running SMRS on a custom query set and (a subset of) CIFAR-10 images
+    - Running SMRS on standard datasets 
+- Instructions for generating input query sets
+
+--- 
 
 ## Getting Started
 
@@ -13,7 +43,13 @@ This project uses `uv` for dependency management.
     git clone https://github.com/carlk13/smrs.git
     cd smrs
     ```
-2.  **Prepare the environment:**
+2.  **Install dependencies:**
+
+    If you don't have `uv` installed, run:
+    ```bash
+    pip install uv
+    ```
+    Then install all dependencies and set up the environment with:
     ```bash
     uv sync
     ```
@@ -21,7 +57,7 @@ This project uses `uv` for dependency management.
 ---
 
 ## Usage
-### Running smrs on the cosine similarity matrix of a queryset and cifar10
+### Run smrs on a cosine similarity matrix (Queryset × CIFAR-10)
 Run the `main.py` file to select representative queries
 ```bash
 uv run python main.py \
@@ -35,8 +71,10 @@ uv run python main.py \
     --verbose \
     --run_without_pruning
 ```
+- `100`= number of queries
+- `10` = images per class
 
-### Running smrs on a standard dataset to test its effectiveness
+### Run smrs on a standard dataset
 Run the `run_smrs_on_dataset` script for example with the following command
 ```bash
 uv run python run_smrs_on_dataset.py \
@@ -50,7 +88,7 @@ uv run python run_smrs_on_dataset.py \
 ```
 
 ### Generating a Query Set 
-Use this prompt to generate a queryset.
+Use this prompt to generate a semantically meaningful queryset tailored for IP on CIFAR-10
 ```
 Information Pursuit (IP) is an explainable prediction algorithm that greedily selects a sequence of interpretable queries about the data in order of information gain, updating its posterior at each step based on observed query-answer pairs. The algorithm requires a queryset of task-relevant queries. For example if the class labels are
 - car 

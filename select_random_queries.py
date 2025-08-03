@@ -23,7 +23,7 @@ if len(lines) < args.amount_needed:
         f"Nur {len(lines)} Zeilen vorhanden, {args.amount_needed} benötigt."
     )
 
-# 128 zufällige auswählen
+# Zufällig auswählen
 sampled = random.sample(lines, args.amount_needed)
 
 # Speichern

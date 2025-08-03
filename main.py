@@ -55,6 +55,11 @@ def main():
         action="store_true",
         help="Run SMRS on the query feature matrix",
     )
+    parser.add_argument(
+        "--threshold_cosine_matrix",
+        action="store_true",
+        help="Threshhold cosine similarity matrix if wanted",
+    )
 
     args = parser.parse_args()
 
@@ -128,7 +133,9 @@ def main():
     # -------------------------------
     cosine_similarity = image_features @ query_features.T
 
-    cosine_similarity = torch.where(cosine_similarity >= 0.25, 1.0, 0.0)
+    # Threshhold cosine similarity if wanted
+    if args.threshold_cosine_matrix:
+        cosine_similarity = torch.where(cosine_similarity >= 0.25, 1.0, 0.0)
 
     print("-" * 80)
     print(f"Cosine similarity shape: {cosine_similarity.shape}")
