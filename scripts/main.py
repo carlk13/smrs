@@ -1,4 +1,13 @@
 import argparse
+import logging
+import sys
+import os
+from omegaconf import OmegaConf
+
+# Ensure src is in path if running directly without install
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "src"))
+
+
 import clip
 import torch
 from torchvision.datasets import CIFAR10
@@ -6,89 +15,41 @@ from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 from typing import List
 
-from smrs import (
-    sparse_modeling_representative_selection,
-    find_representatives,
+from smrs import sparse_modeling_representative_selection, find_representatives
+
+# Setup Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)]
 )
+logger = logging.getLogger(__name__)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run smrs.")
-    # Query arguments
-    parser.add_argument("query_file", type=str, help="Path to query file")
-    parser.add_argument(
-        "amount_queries",
-        type=int,
-        help="The amount of queries which should be used for smrs",
-    )
-
-    # Dataset arguments
-    parser.add_argument(
-        "amount_images_per_class",
-        type=int,
-        help="Amount of pictures taken from each CIFAR10 class for smrs",
-    )
-
-    # SMRS arguments
-
-    parser.add_argument(
-        "--alpha",
-        type=int,
-        help="regularization parameter, typically in [2, 50].",
-        default=5,
-    )
-    parser.add_argument(
-        "--max_iterations", type=int, help="maximum number of ADMM iterations"
-    )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="if True, prints information during iterations",
-    )
-    parser.add_argument(
-        "--run_without_pruning",
-        action="store_true",
-        help="Runs smrs also without pruning",
-    )
-    parser.add_argument(
-        "--run_query_features_only",
-        action="store_true",
-        help="Run SMRS on the query feature matrix",
-    )
-    parser.add_argument(
-        "--threshold_cosine_matrix",
-        action="store_true",
-        help="Threshhold cosine similarity matrix if wanted",
-    )
-
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=str, default="configs/default.yaml", help="Path to config file")
+    parser.add_argument("overrides", nargs="*", help="Any key=value overrides (e.g., defaults.alpha=10)")
     args = parser.parse_args()
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model, preprocess = clip.load("ViT-B/32", device=device)
+    base_conf = OmegaConf.load(args.config)
+    cli_conf = OmegaConf.from_dotlist(args.overrides)
+    cfg = OmegaConf.merge(base_conf, cli_conf)
+    
+    device = cfg.model.device if torch.cuda.is_available() and cfg.model.device == "cuda" else "cpu"
+    logger.info(f"Using device: {device}")
+    model, preprocess = clip.load(cfg.model.clip_model, device=device)
 
-    # -------------------------------
-    #  2. Load pictures and prepare queries
-    # -------------------------------
-
-    with open(args.query_file, "r", encoding="utf-8") as f:
+    logger.info(f"Loading queries from {cfg.data.query_file}")
+    with open(cfg.data.query_file, "r", encoding="utf-8") as f:
         queries = [line.strip() for line in f if line.strip() != ""]
-
-    # Select queries
-    queries = queries[: args.amount_queries]
-
-    # Tokenize the text
+    queries = queries[: cfg.data.amount_queries]
+    
     tokenized = clip.tokenize(queries)
-    query_features = batched_encode_text(model, tokenized, batch_size=64)
+    query_features = batched_encode_text(model, tokenized)
 
-    print("-" * 80)
-    print(f"query_features.shape: {query_features.shape}")
-    print("-" * 80)
-    print(f"Prepared {args.amount_queries} queries")
-    print("-" * 80)
+    full_dataset = CIFAR10(root=cfg.data.image_root, train=True, download=True, transform=preprocess)
 
-    # -------------------------------
-    #  2. Load pictures from CIFAR10
-    # -------------------------------
     transform = preprocess
     full_dataset = CIFAR10(
         root="./data", train=True, download=True, transform=transform
@@ -101,22 +62,18 @@ def main():
     selected_indices = []
 
     for idx, (img, label) in enumerate(full_dataset):
-        if class_counts[label] < args.amount_images_per_class:
+        if class_counts[label] < cfg.data.amount_images_per_class:
             selected_indices.append(idx)
             class_counts[label] += 1
         if all(
-            count == args.amount_images_per_class for count in class_counts.values()
+            count == cfg.data.amount_images_per_class for count in class_counts.values()
         ):
             break
 
     subset = Subset(full_dataset, selected_indices)
     loader = DataLoader(subset, batch_size=32, shuffle=False)
-    print(f"Prepared {args.amount_images_per_class * 10} images")
-    print("-" * 80)
+    logger.info(f"Prepared {cfg.data.amount_images_per_class * 10} images")
 
-    # -------------------------------
-    # 3. Calculate picture-Embeddings
-    # -------------------------------
 
     with torch.no_grad():
         for images, labels in tqdm(loader, desc="Encoding images"):
@@ -128,79 +85,55 @@ def main():
 
     image_features = torch.cat(image_embeddings, dim=0)
 
-    # -------------------------------
-    # 4. Calculate Cosine-Similarity
-    # -------------------------------
     cosine_similarity = image_features @ query_features.T
 
     # Threshhold cosine similarity if wanted
-    if args.threshold_cosine_matrix:
+    if cfg.algorithm.threshold_cosine_matrix:
         cosine_similarity = torch.where(cosine_similarity >= 0.25, 1.0, 0.0)
 
-    print("-" * 80)
-    print(f"Cosine similarity shape: {cosine_similarity.shape}")
-    print("-" * 80)
+    logger.info(f"Cosine similarity shape: {cosine_similarity.shape}")
 
-    # -------------------------------
-    # 5. Run smrs
-    # -------------------------------
-
-    print(
-        f"Runninng with {args.amount_queries} queries and {args.amount_images_per_class} images per class. "
-    )
-    print("-" * 80)
-
+    logger.info(f"Running SMRS with alpha={cfg.defaults.alpha}")
     indices_with_images_pruning, C = sparse_modeling_representative_selection(
         Y=cosine_similarity,
-        alpha=args.alpha,
-        verbose=args.verbose,
-        max_iterations=args.max_iterations,
+        alpha=cfg.defaults.alpha,
+        verbose=cfg.defaults.verbose,
+        max_iterations=cfg.defaults.max_iterations,
     )
 
     save_queries_to_txt_file(
         selected_indices=indices_with_images_pruning,
         queries=queries,
         with_pruning=True,
-        args=args,
+        args=cfg,
     )
 
-    if args.run_without_pruning:
-        print(
-            f"Runninng with {args.amount_queries} queries and {args.amount_images_per_class} images per class without pruning. "
+    if cfg.algorithm.run_without_pruning:
+        logger.info("Running selection without pruning...")
+        indices_no_pruning = find_representatives(
+            C, thr=cfg.algorithm.selection_threshold, q=2
         )
-        print("-" * 80)
+        save_queries_to_txt_file(indices_no_pruning, queries, False, cfg)
 
-        # Is equivalent to running query selection on C again
-        indices_with_images_wo_pruning = find_representatives(C, thr=0.99, q=2)
-
-        save_queries_to_txt_file(
-            indices_with_images_wo_pruning,
-            queries=queries,
-            with_pruning=False,
-            args=args,
-        )
-
-    if args.run_query_features_only:
-        print("Running smrs for query_feature matrix")
-        print("-" * 80)
+    if cfg.algorithm.run_query_features_only:
+        logger.info("Running smrs for query_feature matrix")
         indices_queries_only_pruning, C2 = sparse_modeling_representative_selection(
             Y=query_features.T,
-            alpha=args.alpha,
-            max_iterations=args.max_iterations,
-            verbose=args.verbose,
+            alpha=cfg.defaults.alpha,
+            verbose=cfg.defaults.verbose,
+            max_iterations=cfg.defaults.max_iterations,
         )
 
         save_queries_to_txt_file(
             selected_indices=indices_queries_only_pruning,
             queries=queries,
             with_pruning=True,
-            args=args,
+            args=cfg,
             queries_only=True,
         )
 
-        if args.run_without_pruning:
-            print("Running smrs for query_feature matrix without pruning")
-            print("-" * 80)
+        if cfg.algorithm.run_without_pruning:
+            logger.info("Running smrs for query_feature matrix without pruning")
 
             # equivalent to running query selection on C2 again
             indices_queries_only_wo_pruning = find_representatives(C2, thr=0.99, q=2)
@@ -208,12 +141,11 @@ def main():
                 selected_indices=indices_queries_only_wo_pruning,
                 queries=queries,
                 with_pruning=False,
-                args=args,
+                args=cfg,
                 queries_only=True,
             )
 
-    print("SMRS finished.")
-    print("-" * 80)
+    logger.info("SMRS finished.")
 
 
 def batched_encode_text(
@@ -268,9 +200,9 @@ def save_queries_to_txt_file(
               attributes used for constructing the output filename.
     """
     # Determine the file suffix based on the with_pruning parameter
-    file_middle = "" if queries_only else f"_{args.amount_images_per_class}_images"
+    file_middle = "" if queries_only else f"_{args.data.amount_images_per_class}_images"
     file_suffix = "_pruning.txt" if with_pruning else "_without_pruning.txt"
-    filename = f"{args.amount_queries}_queries{file_middle}{file_suffix}"
+    filename = f"{args.data.amount_queries}_queries{file_middle}{file_suffix}"
 
     queries_images = [queries[i] for i in selected_indices]
     with open(filename, "w") as f:

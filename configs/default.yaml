@@ -1,0 +1,22 @@
+defaults:
+  alpha: 5.0
+  max_iterations: 5000
+  verbose: true
+  
+data:
+  query_file: "querysets/big_queryset.txt"
+  amount_queries: 100
+  amount_images_per_class: 10
+  image_root: "./data"
+  
+model:
+  clip_model: "ViT-B/32"
+  device: "cuda" # or "cpu"
+
+algorithm:
+  run_without_pruning: false
+  run_query_features_only: false
+  threshold_cosine_matrix: false
+  cosine_threshold: 0.25
+  pruning_threshold: 0.95
+  selection_threshold: 0.99
