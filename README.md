@@ -4,14 +4,16 @@ This repository contains the Python implementation (using PyTorch) of the Sparse
 It was developed as part of the Bachelor's Thesis of **Carl Kemmerich**, supervised by Prof. Dr. Gitta Kutyniok and Stefan Kolek M.Sc. at the Bavarian AI Chair for Mathematical Foundations of Artificial Intelligence, Ludwig-Maximilians-Universität Munich.
 
 ---
+
 ## Project Overview
+
 This project uses SMRS to automatically select informative and diverse queries for use in explainable models like Information Pursuit (IP). It leverages CLIP embeddings to compute cosine similarities between images and natural language queries.
 
 The goal is to reduce the size of the queryset without sacrificing informativeness, which is especially useful for large-scale vision tasks where annotation or query design is expensive.
 
 ---
-## Research Context & Results
 
+## Research Context & Results
 
 This implementation:
 - Enables sparse selection of queries from a larger candidate set.
@@ -25,66 +27,81 @@ More details can be found in the thesis PDF, available upon request.
 ## Contributions
 
 The repository contains the following contributions:
-- PyTorch implementation of the SMRS algorithm (based on Elhamifar et al.).
-- Integration with CLIP for computing image-query cosine similarities.
-- Scripts for:
-    - Running SMRS on a custom query set and (a subset of) CIFAR-10 images
-    - Running SMRS on standard datasets 
-- Instructions for generating input query sets
+- **Modular PyTorch implementation** of the SMRS algorithm (separated into `core`, `selection`, and `utils`).
+- **Configuration Management** using OmegaConf for reproducible experiments.
+- **Integration with CLIP** for computing image-query cosine similarities.
+- **Scripts** for:
+    - Running SMRS on a custom query set (`scripts/main.py`)
+    - Running SMRS on standard datasets (`scripts/run_smrs_on_dataset.py`)
+- **Unit Tests** for verifying mathematical correctness.
 
 --- 
 
 ## Getting Started
 
-This project uses `uv` for dependency management.
+This project uses `uv` for dependency management and is structured as a standard Python package.
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/carlk13/smrs.git
+    git clone [https://github.com/carlk13/smrs.git](https://github.com/carlk13/smrs.git)
     cd smrs
     ```
-2.  **Install dependencies:**
 
+2.  **Install dependencies:**
     If you don't have `uv` installed, run:
     ```bash
     pip install uv
     ```
-    Then install all dependencies and set up the environment with:
+    Then install the package in editable mode along with all dependencies:
     ```bash
     uv sync
+    ```
+
+3.  **Run Tests (Optional):**
+    Verify that the installation works and the math utilities are correct:
+    ```bash
+    uv run pytest tests/
     ```
 
 ---
 
 ## Usage
-### Run smrs on a cosine similarity matrix (Queryset × CIFAR-10)
-Run the `main.py` file to select representative queries
-```bash
-uv run python main.py \
-    path/to/your_query_file.txt \
-    100 \
-    10 \
-    --alpha 10.0 \
-    --r 0 \
-    --max_iterations 200 \
-    --delta 0.05 \
-    --verbose \
-    --run_without_pruning
-```
-- `100`= number of queries
-- `10` = images per class
+### 1. Run SMRS on a Custom Query Set
+The main script `scripts/main.py` selects representative queries based on their similarity to images. It uses a configuration file (`configs/default.yaml`) for parameters.
 
-### Run smrs on a standard dataset
-Run the `run_smrs_on_dataset` script for example with the following command
+**Basic Run (using default config):**
 ```bash
-uv run python run_smrs_on_dataset.py \
+uv run python scripts/main
+```
+
+#### Overriding Parameters (CLI):
+You can override any configuration value directly from the command line without editing the YAML file.
+
+```bash
+uv run python scripts/main.py \
+    data.query_file="querysets/my_custom_queries.txt" \
+    defaults.alpha=10.0 \
+    defaults.max_iterations=200 \
+    algorithm.run_without_pruning=true
+```
+
+#### Key Configuration Options
+- `defaults.alpha`: Regularization parameter (typically 2-50)
+- `data.amount_queries`: Number of queries to load.
+- `data.amount_images_per_class`: Images per class (CIFAR-10) to use for representation.
+- `algorithm.pruning_threshold`: Threshold for removing redundant representatives.
+
+### 2. Run SMRS on a Standard Dataset
+
+Use the dataset script to run SMRS directly on image datasets (like CIFAR-10/100 or MNIST) without text queries.
+```bash
+uv run python scripts/run_smrs_on_dataset.py \
     --dataset cifar10 \
     --split test \
     --filter_class 8 \
     --alpha 10 \
-    --r 0 \
     --max_iterations 200 \
-    --verbose   
+    --verbose 
 ```
 
 ### Generating a Query Set 
