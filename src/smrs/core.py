@@ -7,14 +7,15 @@ from .selection import find_representatives, remove_representatives
 
 logger = logging.getLogger(__name__)
 
+
 def admm_main(
-    Y: torch.Tensor, 
-    alpha: float = 5.0, 
-    q: int | float = 2, 
-    thr: float = 1e-7, 
+    Y: torch.Tensor,
+    alpha: float = 5.0,
+    q: int | float = 2,
+    thr: float = 1e-7,
     maxIter: int = 5000,
-    verbose: bool=True,
-    logging_enabled: bool = False
+    verbose: bool = True,
+    logging_enabled: bool = False,
 ) -> Tuple[torch.Tensor, Tuple[float, float], dict[str, list[float]] | None]:
     """
     ADMM for finding sparse representation with or without affine constraints.
@@ -103,7 +104,8 @@ def admm_main(
     Err = (err1, err2)
     if verbose:
         logger.info(
-            f"Terminating ADMM at iteration {i:5d}, \n ||Z - C|| = {err1:.5e}, ||1 - C^T 1|| = {err2:.5e}."
+            f"Terminating ADMM at iteration {i:5d}, "
+            "||Z - C|| = {err1:.5e}, ||1 - C^T 1|| = {err2:.5e}."
         )
 
     if logging_enabled:
@@ -113,12 +115,12 @@ def admm_main(
 
 
 def sparse_modeling_representative_selection(
-    Y: torch.Tensor, 
-    alpha: float = 5.0, 
-    r: int = 0, 
-    verbose: bool = True, 
+    Y: torch.Tensor,
+    alpha: float = 5.0,
+    r: int = 0,
+    verbose: bool = True,
     max_iterations: int = 5000,
-    logging_enabled: bool=False
+    logging_enabled: bool = False,
 ) -> Tuple[list[int], torch.Tensor, Any]:
     """
     Sparse Modeling Representative Selection (SMRS) function.
@@ -181,5 +183,4 @@ def sparse_modeling_representative_selection(
 
     if logging_enabled:
         return representative_indices, C, logs
-    else:
-        return representative_indices, C
+    return representative_indices, C

@@ -1,5 +1,6 @@
 import torch
 
+
 def compute_lambda(Y: torch.Tensor) -> torch.Tensor:
     """
     Computes the regularization parameter lambda for the L1/Lq minimization.
@@ -16,17 +17,19 @@ def compute_lambda(Y: torch.Tensor) -> torch.Tensor:
 
     y_mean = torch.mean(Y, dim=1, keepdim=True).to(Y.dtype)
     ones_matrix = torch.ones((1, N), device=Y.device, dtype=Y.dtype)
-    
+
     for i in range(N):
         yi = Y[:, i].unsqueeze(0)
         affine_term = y_mean @ ones_matrix - Y
         T[i] = torch.norm(torch.matmul(yi, affine_term))
-        
+
     lambda_param = torch.max(T)
     return lambda_param
 
 
-def shrink_l1_lq(Z1: torch.Tensor, lambda_param: float | torch.Tensor, q: int | float = 2) -> torch.Tensor:
+def shrink_l1_lq(
+    Z1: torch.Tensor, lambda_param: float | torch.Tensor, q: int | float = 2
+) -> torch.Tensor:
     """
     Applies L1/Lq shrinkage for sparsity.
 
@@ -39,14 +42,16 @@ def shrink_l1_lq(Z1: torch.Tensor, lambda_param: float | torch.Tensor, q: int | 
         torch.Tensor: The shrunk matrix Z2.
     """
     Z1 = Z1.double()
-    
+
     if not isinstance(lambda_param, torch.Tensor):
         lambda_param = torch.tensor(lambda_param, dtype=Z1.dtype, device=Z1.device)
     else:
         lambda_param = lambda_param.double()
 
     if q == 1:
-        Z2 = torch.maximum(torch.abs(Z1) - lambda_param, torch.zeros_like(Z1)) * torch.sign(Z1)
+        Z2 = torch.maximum(
+            torch.abs(Z1) - lambda_param, torch.zeros_like(Z1)
+        ) * torch.sign(Z1)
     elif q == 2:
         row_norms = torch.norm(Z1, dim=1)
         r = torch.maximum(row_norms - lambda_param, torch.zeros_like(row_norms))
@@ -78,11 +83,13 @@ def shrink_l2_linf(y: torch.Tensor, tau: float | torch.Tensor) -> torch.Tensor:
 
     if len(y) <= 1:
         zbar = y_sorted[0]
-        value = torch.maximum(zbar - tau, torch.tensor(0.0, dtype=torch.float64, device=y.device))
+        value = torch.maximum(
+            zbar - tau, torch.tensor(0.0, dtype=torch.float64, device=y.device)
+        )
         x[0] = torch.sign(y[0]) * value
         return x
 
-     # Calculate cumulative sum for threshold check
+    # Calculate cumulative sum for threshold check
     arange_tensor = torch.arange(1, len(y), device=y.device, dtype=torch.float64)
     cumulative_sum = (torch.cumsum(y_sorted[:-1], dim=0) / arange_tensor) - (
         tau / arange_tensor
@@ -124,9 +131,11 @@ def calculate_errorcoefficient(Z: torch.Tensor, C: torch.Tensor) -> torch.Tensor
     C = C.double()
 
     if Z.shape != C.shape:
-        raise ValueError(f"Z and C must have the same shape. Got {Z.shape} and {C.shape}")
+        raise ValueError(
+            f"Z and C must have the same shape. Got {Z.shape} and {C.shape}"
+        )
 
-     # Determine the number of elements for normalization
+    # Determine the number of elements for normalization
     if Z.ndim == 1:  # Vector case
         num_elements = Z.shape[0]
     elif Z.ndim == 2:  # Matrix case

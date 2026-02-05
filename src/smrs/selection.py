@@ -1,6 +1,9 @@
 import torch
 
-def find_representatives(C: torch.Tensor, thr: float = 0.99, q: int | float = 2) -> torch.Tensor:
+
+def find_representatives(
+    C: torch.Tensor, thr: float = 0.99, q: int | float = 2
+) -> torch.Tensor:
     """
     Identifies indices of nonzero rows in the coefficient matrix based on their norms.
 
@@ -27,13 +30,13 @@ def find_representatives(C: torch.Tensor, thr: float = 0.99, q: int | float = 2)
     cumulative_sum = 0
     total_norm_sum = torch.sum(sorted_norms).double()
 
-    for j in range(len(sorted_norms)):
-        cumulative_sum += sorted_norms[j]
+    # If the loop didn't break, set j to the last index
+    j = len(sorted_norms) - 1
+    for idx, val in enumerate(sorted_norms):
+        cumulative_sum += val
         if cumulative_sum / total_norm_sum > thr:
+            j = idx
             break
-    else:
-        # If the loop didn't break, set j to the last index
-        j = len(sorted_norms) - 1
 
     # Indices of rows selected as representatives
     selected_indices = non_outlier_indices[sorted_indices[: j + 1]]
@@ -41,7 +44,9 @@ def find_representatives(C: torch.Tensor, thr: float = 0.99, q: int | float = 2)
     return selected_indices
 
 
-def remove_representatives(sInd: torch.Tensor, Y: torch.Tensor, thr: float=0.95) -> list[int]:
+def remove_representatives(
+    sInd: torch.Tensor, Y: torch.Tensor, thr: float = 0.95
+) -> list[int]:
     """
     Removes redundant representatives based on pairwise distances.
 

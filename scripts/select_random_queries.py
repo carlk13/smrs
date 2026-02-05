@@ -2,12 +2,15 @@ import argparse
 import random
 import os
 
+
 def main():
     parser = argparse.ArgumentParser(description="Randomly sample queries from a file.")
     parser.add_argument("input_file", help="Path to input text file")
     parser.add_argument("output_file", help="Path to output text file")
     parser.add_argument("amount_needed", type=int, help="Amount of queries to sample")
-    parser.add_argument("--seed", type=int, default=1, help="Random seed for reproducibility")
+    parser.add_argument(
+        "--seed", type=int, default=1, help="Random seed for reproducibility"
+    )
 
     args = parser.parse_args()
 
@@ -30,6 +33,7 @@ def main():
         f.write("\n".join(sampled))
 
     print(f"Saved {args.amount_needed} random queries to: {args.output_file}")
+
 
 if __name__ == "__main__":
     main()

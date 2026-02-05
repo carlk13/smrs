@@ -21,22 +21,30 @@ from smrs import sparse_modeling_representative_selection, find_representatives
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)]
+    handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger(__name__)
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=str, default="configs/default.yaml", help="Path to config file")
-    parser.add_argument("overrides", nargs="*", help="Any key=value overrides (e.g., defaults.alpha=10)")
+    parser.add_argument(
+        "--config", type=str, default="configs/default.yaml", help="Path to config file"
+    )
+    parser.add_argument(
+        "overrides", nargs="*", help="Any key=value overrides (e.g., defaults.alpha=10)"
+    )
     args = parser.parse_args()
 
     base_conf = OmegaConf.load(args.config)
     cli_conf = OmegaConf.from_dotlist(args.overrides)
     cfg = OmegaConf.merge(base_conf, cli_conf)
-    
-    device = cfg.model.device if torch.cuda.is_available() and cfg.model.device == "cuda" else "cpu"
+
+    device = (
+        cfg.model.device
+        if torch.cuda.is_available() and cfg.model.device == "cuda"
+        else "cpu"
+    )
     logger.info(f"Using device: {device}")
     model, preprocess = clip.load(cfg.model.clip_model, device=device)
 
@@ -44,11 +52,13 @@ def main():
     with open(cfg.data.query_file, "r", encoding="utf-8") as f:
         queries = [line.strip() for line in f if line.strip() != ""]
     queries = queries[: cfg.data.amount_queries]
-    
+
     tokenized = clip.tokenize(queries)
     query_features = batched_encode_text(model, tokenized)
 
-    full_dataset = CIFAR10(root=cfg.data.image_root, train=True, download=True, transform=preprocess)
+    full_dataset = CIFAR10(
+        root=cfg.data.image_root, train=True, download=True, transform=preprocess
+    )
 
     transform = preprocess
     full_dataset = CIFAR10(
@@ -73,7 +83,6 @@ def main():
     subset = Subset(full_dataset, selected_indices)
     loader = DataLoader(subset, batch_size=32, shuffle=False)
     logger.info(f"Prepared {cfg.data.amount_images_per_class * 10} images")
-
 
     with torch.no_grad():
         for images, labels in tqdm(loader, desc="Encoding images"):
